@@ -39,7 +39,7 @@ class Vote:
         print(self.option_a, self.option_b)
 
     def get_crops(self):
-        im = image.open(r'resources/images/class.jpeg')
+        im = Image.open(r'resources/images/class.jpeg')
         images =[]
         for people in self.people_guesses:
 
