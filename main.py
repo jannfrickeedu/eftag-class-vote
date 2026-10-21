@@ -3,6 +3,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from pathlib import Path
+from PIL import Image
 
 class Option:
     def __init__(self, name):
@@ -37,6 +38,20 @@ class Vote:
     def get_results(self):
         print(self.option_a, self.option_b)
 
+    def get_crops(self):
+        im = image.open(r'resources/images/class.jpeg')
+        images =[]
+        for people in self.people_guesses:
+
+            tl_x = people.origin_x - (0.1*people.width)
+            tl_y = people.origin_y - (0.1*people.height)
+            br_x = people.origin_x + people.width + (0.1*people.width)
+            br_y = people.origin_y + people.height + (0.1*people.height)
+
+            cropped_image = im.crop((tl_x, tl_y, br_x, br_y))
+            images.append(cropped_image)
+
+        return images
 
 if __name__ == "__main__":
     Vote("resources/class.jpeg")
