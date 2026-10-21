@@ -18,7 +18,7 @@ class Vote:
         self.option_a = option_a
         self.option_b = option_b
         self.people_guesses = self.get_people(image_path)
-        self.crops = self.get_crops(self.people_guesses)
+        self.crops = self.get_crops()
         self.votes = self.get_votes(self.crops)
 
 
@@ -33,10 +33,31 @@ class Vote:
 
         detection_result = detector.detect(image)
 
-        return [r.bbox for r in detection_result.bounding_box]
+        return [r.bounding_box for r in detection_result.detections]
 
-    def get_results(self):
-        print(self.option_a, self.option_b)
+    def get_votes(self, crops):
+        # GestureRecognizer-Objekt erstellen basieren auf heruntergeladenem Modell
+        base_gesture_options = python.BaseOptions(model_asset_path='resources/model/gesture_recognizer.task')
+        gesture_options = vision.GestureRecognizerOptions(base_options=base_gesture_options)
+        gesture_recognizer = vision.GestureRecognizer.create_from_options(gesture_options)
+
+        # Liste von lokalen Bild-Dateien
+        for crop in crops:
+            crop.convert('RGB')
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(crop))
+            # Bild durch Recognizer schicken
+            recognition_result = gesture_recognizer.recognize(mp_image)
+
+            # Top-Geste der Erkennung auslesen
+            top_gesture = recognition_result.gestures[0][0]
+
+            if top_gesture.category_name == "Thumb_Up":
+                self.option_a.votes += 1
+            elif top_gesture.category_name == "Thumb_Down":
+                self.option_b.votes += 1
+            else:
+                print(f"did not recognize category_name: {top_gesture.category_name}")
+
 
     def get_crops(self):
         im = Image.open(r'resources/images/class.jpeg')
@@ -54,5 +75,7 @@ class Vote:
         return images
 
 if __name__ == "__main__":
-    Vote("resources/class.jpeg")
-    print(Vote.get_results())
+    a = Option("Pizza yes")
+    b = Option("Pizza no")
+    poll = Vote("resources/images/class.jpeg", a, b)
+    print(poll.option_a, poll.option_b)
