@@ -7,8 +7,8 @@ from pathlib import Path
 from PIL import Image
 
 MODEL_DIR = Path(__file__).parent / "resources" / "model"
-MARGIN = 0.2
-SCORE_THRESHOLD = 0.25
+MARGIN = 0.233
+SCORE_THRESHOLD = 0.233
 
 
 class Option:
@@ -25,10 +25,10 @@ def to_mp_image(image: Image.Image):
 
 
 @cache
-def get_detector(category_list=("person",)):
+def get_detector(score_threshold, category_list=("person",)):
     base_options = python.BaseOptions(model_asset_path=str(MODEL_DIR / "efficientdet_lite0.tflite"))
     options = vision.ObjectDetectorOptions(base_options=base_options,
-                                           score_threshold=SCORE_THRESHOLD,
+                                           score_threshold=score_threshold,
                                            category_allowlist=list(category_list))
     return vision.ObjectDetector.create_from_options(options)
 
@@ -40,8 +40,8 @@ def get_gesture_recognizer():
     return vision.GestureRecognizer.create_from_options(gesture_options)
 
 
-def get_bbox_from_image(image: Image.Image, category_list=("person",)):
-    detection_result = get_detector(tuple(category_list)).detect(to_mp_image(image))
+def get_bbox_from_image(image: Image.Image, threshold, category_list=("person",)):
+    detection_result = get_detector(threshold, tuple(category_list)).detect(to_mp_image(image))
     return [r.bounding_box for r in detection_result.detections]
 
 
@@ -50,17 +50,19 @@ class Vote:
         self.option_a = option_a
         self.option_b = option_b
         self.other_votes = 0
+        self.margin = margin
+        self.threshold = score_threshold
         # list of (bounding_box, gesture_name or None) per detected person
         self.details = []
 
         (self.option_a.votes, self.option_b.votes, self.other_votes) = self.evaluate(image)
 
     @classmethod
-    def from_path(cls, image_path: Path, option_a: Option, option_b: Option):
-        return cls(Image.open(image_path), option_a, option_b)
+    def from_path(cls, image_path: Path, option_a: Option, option_b: Option, margin=MARGIN, score_threshold=SCORE_THRESHOLD):
+        return cls(Image.open(image_path), option_a, option_b, margin, score_threshold)
 
     def evaluate(self, image: Image.Image):
-        people = get_bbox_from_image(image, category_list=["person"])
+        people = get_bbox_from_image(image, self.threshold, category_list=["person"])
         crops = self.get_crops(image, people)
         return self.get_votes(people, crops)
 
@@ -85,7 +87,6 @@ class Vote:
             elif top_gesture.category_name == "Thumb_Down":
                 neg += 1
             else:
-                print(f"did not recognize category_name: {top_gesture.category_name}")
                 other += 1
 
 
@@ -95,10 +96,10 @@ class Vote:
         images = []
         for person in people:
 
-            tl_x = person.origin_x - (MARGIN*person.width)
-            tl_y = person.origin_y - (MARGIN*person.height)
-            br_x = person.origin_x + person.width + (MARGIN*person.width)
-            br_y = person.origin_y + person.height + (MARGIN*person.height)
+            tl_x = person.origin_x - (self.margin*person.width)
+            tl_y = person.origin_y - (self.margin*person.height)
+            br_x = person.origin_x + person.width + (self.margin*person.width)
+            br_y = person.origin_y + person.height + (self.margin*person.height)
 
             cropped_image = image.crop((tl_x, tl_y, br_x, br_y))
             images.append(cropped_image)

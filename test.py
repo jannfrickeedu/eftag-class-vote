@@ -1,12 +1,13 @@
 import pandas as pd
 from pathlib import Path
 from main import Vote, Option
-from scipy.optimize import minimize
+from scipy.optimize import brute
 
 names = ["pos", "neg", "other"]
 correct = pd.read_csv('resources/images/class-data-set/correct.csv', names=names)
 def loss_function(p):
     MARGIN, SCORE_THRESHOLD = p
+    print(p)
     results = []
     training_dir = Path("resources/images/class-data-set")
     for file in training_dir.iterdir():
@@ -14,7 +15,7 @@ def loss_function(p):
             continue
         a = Option("positive")
         b = Option("negative")
-        poll = Vote.from_path(file, a, b)
+        poll = Vote.from_path(file, a, b, margin=MARGIN, score_threshold=SCORE_THRESHOLD)
         results.append({"pos": poll.option_a.votes, "neg": poll.option_b.votes, "other": poll.other_votes})
 
     pandas_results = pd.DataFrame(results)
@@ -25,10 +26,6 @@ def loss_function(p):
 # Initial guess for the parameters
 initial_guess = [0.2, 0.25]
 
-# Minimize the loss function
-result = minimize(loss_function, initial_guess, method='Nelder-Mead')
-
-print("Optimal parameters:")
-print(f"Margin: {result.x[0]}")
-print(f"Score threshold: {result.x[1]}")
-print(f"Optimal value: {result.fun}")
+best = brute(loss_function, ranges=[(0.1, 0.5), (0.1, 0.5)], Ns=10, finish=None)
+print("best vvalues are:")
+print(best)
