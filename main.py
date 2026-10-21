@@ -2,9 +2,12 @@ import numpy as np
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from functools import cache
 from pathlib import Path
 from PIL import Image
-import os
+
+MODEL_DIR = Path(__file__).parent / "resources" / "model"
+
 
 class Option:
     def __init__(self, name):
@@ -15,45 +18,63 @@ class Option:
         return f"{self.name}: {self.votes}"
 
 
-def get_bbox_from_image(image_path, category_list=["person"]):
-    base_options = python.BaseOptions(model_asset_path='resources/model/efficientdet_lite0.tflite')
+def to_mp_image(image: Image.Image):
+    return mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(image.convert("RGB")))
+
+
+@cache
+def get_detector(category_list=("person",)):
+    base_options = python.BaseOptions(model_asset_path=str(MODEL_DIR / "efficientdet_lite0.tflite"))
     options = vision.ObjectDetectorOptions(base_options=base_options,
                                            score_threshold=0.3,
-                                           category_allowlist=category_list)
-    detector = vision.ObjectDetector.create_from_options(options)
+                                           category_allowlist=list(category_list))
+    return vision.ObjectDetector.create_from_options(options)
 
-    image = mp.Image.create_from_file(str(image_path))
 
-    detection_result = detector.detect(image)
+@cache
+def get_gesture_recognizer():
+    base_gesture_options = python.BaseOptions(model_asset_path=str(MODEL_DIR / "gesture_recognizer.task"))
+    gesture_options = vision.GestureRecognizerOptions(base_options=base_gesture_options)
+    return vision.GestureRecognizer.create_from_options(gesture_options)
 
+
+def get_bbox_from_image(image: Image.Image, category_list=("person",)):
+    detection_result = get_detector(tuple(category_list)).detect(to_mp_image(image))
     return [r.bounding_box for r in detection_result.detections]
 
 
 class Vote:
-    def __init__(self, image_path: Path, option_a: Option, option_b: Option):
+    def __init__(self, image: Image.Image, option_a: Option, option_b: Option):
         self.option_a = option_a
         self.option_b = option_b
+        # list of (bounding_box, gesture_name or None) per detected person
+        self.details = []
 
-        (self.option_a.votes, self.option_b.votes) = self.evaluate(image_path)
+        (self.option_a.votes, self.option_b.votes) = self.evaluate(image)
 
-    def evaluate(self, image_path: Path):
-        people = get_bbox_from_image(image_path, category_list=["person"])
-        crops = self.get_crops(people)
-        return self.get_votes(crops)
+    @classmethod
+    def from_path(cls, image_path: Path, option_a: Option, option_b: Option):
+        return cls(Image.open(image_path), option_a, option_b)
 
-    def get_votes(self, crops):
-        base_gesture_options = python.BaseOptions(model_asset_path='resources/model/gesture_recognizer.task')
-        gesture_options = vision.GestureRecognizerOptions(base_options=base_gesture_options)
-        gesture_recognizer = vision.GestureRecognizer.create_from_options(gesture_options)
+    def evaluate(self, image: Image.Image):
+        people = get_bbox_from_image(image, category_list=["person"])
+        crops = self.get_crops(image, people)
+        return self.get_votes(people, crops)
+
+    def get_votes(self, people, crops):
+        gesture_recognizer = get_gesture_recognizer()
         pos = 0
         neg = 0
 
-        for crop in crops:
-            crop.convert('RGB')
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(crop))
-            recognition_result = gesture_recognizer.recognize(mp_image)
+        for person, crop in zip(people, crops):
+            recognition_result = gesture_recognizer.recognize(to_mp_image(crop))
+
+            if not recognition_result.gestures:
+                self.details.append((person, None))
+                continue
 
             top_gesture = recognition_result.gestures[0][0]
+            self.details.append((person, top_gesture.category_name))
 
             if top_gesture.category_name == "Thumb_Up":
                 pos += 1
@@ -64,9 +85,7 @@ class Vote:
 
         return (pos, neg)
 
-
-    def get_crops(self, people):
-        im = Image.open(r'resources/images/class-data-set/class0.jpeg')
+    def get_crops(self, image: Image.Image, people):
         images = []
         for person in people:
 
@@ -75,15 +94,16 @@ class Vote:
             br_x = person.origin_x + person.width + (0.1*person.width)
             br_y = person.origin_y + person.height + (0.1*person.height)
 
-            cropped_image = im.crop((tl_x, tl_y, br_x, br_y))
+            cropped_image = image.crop((tl_x, tl_y, br_x, br_y))
             images.append(cropped_image)
 
         return images
+
 
 if __name__ == "__main__":
     a = Option("positive")
     b = Option("negative")
     training_dir = Path("resources/images/class-data-set")
     for file in training_dir.iterdir():
-        poll = Vote(file, a, b)
+        poll = Vote.from_path(file, a, b)
         print(poll.option_a, poll.option_b)
