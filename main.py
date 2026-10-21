@@ -7,6 +7,8 @@ from pathlib import Path
 from PIL import Image
 
 MODEL_DIR = Path(__file__).parent / "resources" / "model"
+MARGIN = 0.2
+SCORE_THRESHOLD = 0.25
 
 
 class Option:
@@ -26,7 +28,7 @@ def to_mp_image(image: Image.Image):
 def get_detector(category_list=("person",)):
     base_options = python.BaseOptions(model_asset_path=str(MODEL_DIR / "efficientdet_lite0.tflite"))
     options = vision.ObjectDetectorOptions(base_options=base_options,
-                                           score_threshold=0.3,
+                                           score_threshold=SCORE_THRESHOLD,
                                            category_allowlist=list(category_list))
     return vision.ObjectDetector.create_from_options(options)
 
@@ -44,7 +46,7 @@ def get_bbox_from_image(image: Image.Image, category_list=("person",)):
 
 
 class Vote:
-    def __init__(self, image: Image.Image, option_a: Option, option_b: Option):
+    def __init__(self, image: Image.Image, option_a: Option, option_b: Option, margin=MARGIN, score_threshold=SCORE_THRESHOLD):
         self.option_a = option_a
         self.option_b = option_b
         # list of (bounding_box, gesture_name or None) per detected person
@@ -65,6 +67,7 @@ class Vote:
         gesture_recognizer = get_gesture_recognizer()
         pos = 0
         neg = 0
+        other = 0
 
         for person, crop in zip(people, crops):
             recognition_result = gesture_recognizer.recognize(to_mp_image(crop))
@@ -82,17 +85,19 @@ class Vote:
                 neg += 1
             else:
                 print(f"did not recognize category_name: {top_gesture.category_name}")
+                other += 1
 
-        return (pos, neg)
+
+        return (pos, neg, other)
 
     def get_crops(self, image: Image.Image, people):
         images = []
         for person in people:
 
-            tl_x = person.origin_x - (0.1*person.width)
-            tl_y = person.origin_y - (0.1*person.height)
-            br_x = person.origin_x + person.width + (0.1*person.width)
-            br_y = person.origin_y + person.height + (0.1*person.height)
+            tl_x = person.origin_x - (MARGIN*person.width)
+            tl_y = person.origin_y - (MARGIN*person.height)
+            br_x = person.origin_x + person.width + (MARGIN*person.width)
+            br_y = person.origin_y + person.height + (MARGIN*person.height)
 
             cropped_image = image.crop((tl_x, tl_y, br_x, br_y))
             images.append(cropped_image)
