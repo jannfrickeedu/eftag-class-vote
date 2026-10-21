@@ -49,10 +49,11 @@ class Vote:
     def __init__(self, image: Image.Image, option_a: Option, option_b: Option, margin=MARGIN, score_threshold=SCORE_THRESHOLD):
         self.option_a = option_a
         self.option_b = option_b
+        self.other_votes = 0
         # list of (bounding_box, gesture_name or None) per detected person
         self.details = []
 
-        (self.option_a.votes, self.option_b.votes) = self.evaluate(image)
+        (self.option_a.votes, self.option_b.votes, self.other_votes) = self.evaluate(image)
 
     @classmethod
     def from_path(cls, image_path: Path, option_a: Option, option_b: Option):
