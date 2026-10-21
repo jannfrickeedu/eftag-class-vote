@@ -4,11 +4,22 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from pathlib import Path
 
+class Option:
+    def __init__(self, name):
+        self.name = name
+        self.votes = 0
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.votes}"
+
 class Vote:
-    def __init__(self, image_path):
+    def __init__(self, image_path: Path, option_a: Option, option_b: Option):
+        self.option_a = option_a
+        self.option_b = option_b
         self.people_guesses = self.get_people(image_path)
         self.crops = self.get_crops(self.people_guesses)
         self.votes = self.get_votes(self.crops)
+
 
     def get_people(self, image_path):
         base_options = python.BaseOptions(model_asset_path='resources/model/efficientdet_lite0.tflite')
@@ -24,7 +35,7 @@ class Vote:
         return [r.bbox for r in detection_result.bounding_box]
 
     def get_results(self):
-        pass
+        print(self.option_a, self.option_b)
 
 
 if __name__ == "__main__":
